@@ -1,8 +1,8 @@
-library("ggplot2", lib.loc="~/R/win-library/3.5")
-library("readMzXmlData", lib.loc="~/R/win-library/3.5")
+library("ggplot2")
+library("readMzXmlData")
 library(stringr)
-library("CHNOSZ", lib.loc="~/R/win-library/3.5")
-library("plotly", lib.loc="~/R/win-library/3.5")
+library("CHNOSZ")
+library("plotly")
 add_adducts <- function(listofmasses, mode){
   output <- data.frame()
   if (startsWith(toupper(mode),'P') == TRUE){
