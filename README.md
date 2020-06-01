@@ -8,7 +8,7 @@ This is a quick way to plot the mass to charge value vs intensity of a specific 
 ## ranked_matches_df
 This is the function to decode the potential matches column of potential_matches data frame produced by MS_FBA.  It will take one potential match cell and output a ranked list of those matches in a much easier format to be read by people.  
 
-# Main fuction
+# Main function
 ## MS_FBA
 The MS_FBA function evaluates XCMS Online results against a custom compound list. There are eight variables that must be set for the MS_FBA function to be completed:xcms_tsvfile, files, file_prefixes, compounds_tsv, ion_mode, pvalue = 0.005, ppm =5, rtmulti.
 1. xcms_tsvfile: This is located in the results folder downloaded after the XCMS Online run is completed. The exact title will be "XCMS.annotated.diffreport.tsv"
