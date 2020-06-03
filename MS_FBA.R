@@ -3,7 +3,11 @@ library("readMzXmlData")
 library(stringr)
 library("CHNOSZ")
 library("plotly")
+###
+# The three functions below are later used within MS_FBA.
+###
 add_adducts <- function(listofmasses, mode){
+  # This function is used for generating adducts from the compounds list/compound_tsv file for the mode specified when running MS_FBA.
   output <- data.frame()
   if (startsWith(toupper(mode),'P') == TRUE){
     for (i in 1:length(listofmasses)){
@@ -33,6 +37,7 @@ add_adducts <- function(listofmasses, mode){
   return(output)
 }
 isotope_count <-  function(formula){
+  # This function is used to calculate the theoretical or "expected" isotope ratio for comparison with the actual from the raw data.
   ifelse(is.na(as.numeric(str_sub(formula,1,1))),multiplier <- 1, multiplier <- as.numeric(str_sub(formula,1,1)))
   if(multiplier >1){
     formula <- str_sub(formula,2)
@@ -46,16 +51,14 @@ isotope_count <-  function(formula){
   }
   #The percent natural abundance data is from the 1997 report of the IUPAC Subcommittee for Isotopic
   #Abundance Measurements by K.J.R. Rosman, P.D.P. Taylor Pure Appl. Chem. 1999, 71, 1593-1607.
-  # the ratio we are multiplying our counts by is the percent isotope divide by the standrad percent.
+  # the ratio we are multiplying our counts by is the percent isotope divide by the standard percent.
   upone <- multiplier * ((counts[['C']] *1.08)+ (counts[['H']] *0.0115) +(counts[['N']] * 0.369)+(counts[['O']] *0.038)+(counts[['S']] * 0.8006) + (counts[['Si']] * 5.07775))
   uptwo <- multiplier * ((counts[['O']] * 0.2054)+(counts[['S']] * 4.519)+ (counts[['Cl']] * 31.96094) + (counts[['Br']] * 97.2775) + (counts[['Si']] * 3.34729))
   values <- paste('M+1 :',toString(upone),'; M+2 :',toString(uptwo) , sep= '')
   return(values)
 }
-plot_mzxml_spectum <- function(mzxml_file,index){
-  plot(mzxml_file[[index]][["spectrum"]][["mass"]],mzxml_file[[index]][["spectrum"]][["intensity"]],type = 'h')
-}
-ranked_macthes_df <- function(matches){
+ranked_matches_df <- function(matches){
+  # This is a function tabulates the features matched with compounds from the PyFBA model's compounds list.
   match_output = data.frame()
   for (match in 1:length(strsplit(matches,' ;; ')[[1]])){
     match_output[match,'compound'] <- str_sub(strsplit(matches,' ;; ')[[1]][match],1,str_locate(strsplit(matches,' ;; ')[[1]],' : ')[match,][['start']])
@@ -64,19 +67,33 @@ ranked_macthes_df <- function(matches){
   }
   return(match_output)
 }
+###
+# The function below is a convenient function that can be used to visualize the raw data MZXML files if necessary.
+###
+plot_mzxml_spectrum <- function(mzxml_file,index){
+  plot(mzxml_file[[index]][["spectrum"]][["mass"]],mzxml_file[[index]][["spectrum"]][["intensity"]],type = 'h')
+}
+###
+# Below is the actual MS_FBA function for data analysis.The following inputs are necessary:
+# "xcms_tsvfile": From downloaded XCMS Online results, "XCMS.annotated.diffreport.tsv" file
+# "files": Raw data files converted to MZXML format. Character vector of the files used to generate XCMS results
+# "file_prefixes": Character vector of how sample classes were defined.
+# "compounds_tsv": List of compounds from the PyFBA model. Must be formatted 'compound \t monoisotopic pass \t molecular formula \n'.
+# "ion_mode": 'N' for negative mode, 'P' for positive mode. Detection mode used in the mass spec analysis.
+###
 MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalue = 0.005,ppm =5,rtmulti=1){
   results <- read.csv(xcms_tsvfile,sep='\t')
   results <- results[which(results[,'pvalue'] <= pvalue),]
   peakgroups <- unique(results[,'pcgroup'])
   matching_df <- list() # this is going to be a list of dataframes that is the output of this function
-  # this for loop seperates the features detected by XCMS Online into the peak groups they are and 
-  # pulls out all the crucial information form the annotated tsv 
+  # this for loop separates the features detected by XCMS Online into the peak groups they are and 
+  # pulls out all the crucial information from the annotated tsv 
   for (group in peakgroups){
     inter_var <- results[which(results[,'pcgroup'] == group), c('featureidx','mzmed','mzmin','mzmax','rtmed','rtmin','rtmax','maxint')]
     inter_var <- inter_var[order(inter_var[,'maxint'],decreasing = T),]
     matching_df[[paste('peakgroup',toString(group))]] <- inter_var
   }
-  # after the above for loop we have the start of our dataframes.they will grow with each mzxml file that we are reading in 
+  # after the above for loop we have the start of our dataframes. they will grow with each mzxml file that we are reading in 
   for (file in files){
     name <- strsplit(file,'.mzxml')[[1]] # the name is the name that the file is called from the instrument
     myxml <- readMzXmlFile(file)
@@ -84,12 +101,12 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
       inter_var <- matching_df[[i]]
       for (rownum in 1:nrow(inter_var)){
         # creating the mz window is based on the ppm value selected.
-        mzmin <- inter_var[rownum,'mzmed'] - (inter_var[rownum,'mzmed'] * (ppm *0.000001)) # defalut this will be an 
+        mzmin <- inter_var[rownum,'mzmed'] - (inter_var[rownum,'mzmed'] * (ppm *0.000001)) # default. this will be an 
         mzmax <- inter_var[rownum,'mzmed'] + (inter_var[rownum,'mzmed'] * (ppm *0.000001)) # exact match since ppm = 0
         rtmin <- inter_var[rownum,'rtmin'] 
         rtmax <- inter_var[rownum,'rtmax'] 
-        # creating the Retention time window is dependent on the rtmulti selected.
-        # the rentention time difference is multipled and that time window is added on either side of 
+        # creating the retention time window is dependent on the rtmulti selected.
+        # the retention time difference is multipled and that time window is added on either side of 
         # the original time window
         rtdiff <- rtmax - rtmin
         rtmin <- rtmin - (rtdiff* rtmulti)
@@ -122,7 +139,7 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
             isotopic_ratio <- (myxml[[highscan]][['spectrum']][['intensity']][oneup_index] / myxml[[highscan]][['spectrum']][['intensity']][highmass_index])*100
           }
         }
-        # now we are adding on to the output list of dataframes and the coloumns will be named based on the file
+        # now we are adding on to the output list of dataframes and the columns will be named based on the file
         # highscan is the scan number within the mzxml file where the highest intensity for the feature mass is located 
         # highmass_index is the index in the spectrum where that feature mass is located
         # highint is the intensity of that mass, and it is the highest intensity for that feature mass
@@ -139,7 +156,7 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
   for (peakgroup in 1:length(matching_df)){
     for (row in 1:nrow(matching_df[[peakgroup]])){
       # here we begin to take the average intensity of the features 
-      #first we need to add the columns to the rows and set the zalue to zero as defualt
+      # first we need to add the columns to the rows and set the value to zero as default
       matching_df[[peakgroup]][row,paste(file_prefixes[1],'average')] <- 0
       matching_df[[peakgroup]][row,paste(file_prefixes[2],'average')] <- 0
       matching_df[[peakgroup]][row,paste(file_prefixes[3],'average')] <- 0
@@ -147,7 +164,7 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
       mcount <- length(which(as.numeric(matching_df[[peakgroup]][row,which(startsWith(colnames(matching_df[["peakgroup 2"]]),file_prefixes[1]) & endsWith(colnames(matching_df[["peakgroup 2"]]),'highint'))]) == 0 ))
       lcount <- length(which(as.numeric(matching_df[[peakgroup]][row,which(startsWith(colnames(matching_df[["peakgroup 2"]]),file_prefixes[2]) & endsWith(colnames(matching_df[["peakgroup 2"]]),'highint'))]) == 0 ))
       scount <- length(which(as.numeric(matching_df[[peakgroup]][row,which(startsWith(colnames(matching_df[["peakgroup 2"]]),file_prefixes[3]) & endsWith(colnames(matching_df[["peakgroup 2"]]),'highint'))]) == 0 ))
-      #next if the counts are less then 2(meaning 3 or more of the 5 biological replicates were present)
+      # next if the counts are less then 2 (meaning 3 or more of the 5 biological replicates were present)
       # then the columns that we added will be set to the average of those intensities that were not equal to zero 
       if (mcount <= 2){
         matching_df[[peakgroup]][row,paste(file_prefixes[1],'average')] <- mean(as.numeric(matching_df[[peakgroup]][row,which(startsWith(colnames(matching_df[["peakgroup 2"]]),file_prefixes[1]) & endsWith(colnames(matching_df[["peakgroup 2"]]),'highint'))[which(as.numeric(matching_df[[peakgroup]][row,which(startsWith(colnames(matching_df[["peakgroup 2"]]),file_prefixes[1]) & endsWith(colnames(matching_df[["peakgroup 2"]]),'highint'))]) != 0 )]]))
@@ -177,7 +194,8 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
   totalplot <- rbind.data.frame(MLplot,LSplot)
   totalplot[which(is.na(totalplot[,'mean_isotopic_ratio'])),'mean_isotopic_ratio'] <- 0
   # here is where the expected compounds list comes into the program 
-  compounds_list <- read.csv(compounds_tsv,sep = '\t',stringsAsFactors = FALSE)
+  # Need to pull the expected compounds list from PyFBA
+  compounds_list <- read.csv(compounds_tsv,sep = ',',stringsAsFactors = FALSE)
   compounds_list <- compounds_list[!duplicated(compounds_list[,1]), ]
   compound_plus_adduct <- add_adducts(compounds_list[,3],mode = ion_mode)
   rownames(compound_plus_adduct) <- compounds_list[,1]
@@ -249,10 +267,10 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
   #             using totalplot[,'Peakgroup'] we are higlighting the points from the peakgroups.
   p <- ggplot(d,aes(x = totalplot[,'M/Z'], y = totalplot[,'Intensity Difference'], group = totalplot[,'rt'],
                     color = totalplot[,'measure points'])) + geom_point()+
-    # d brings the highlight_key() information into the plot that we are makeing
-    # aes() is how the formating of ggplots are done, withing that, the first two areguements are x and y 
+    # d brings the highlight_key() information into the plot that we are making
+    # aes() is how the formating of ggplots are done, within that, the first two arguments are x and y 
     # group adds the ability to show more information in the text box that appears when hovering over a point 
-    # color tell the group which columon to base the coloring of the points on. 
+    # color tell the group which column to base the coloring of the points on. 
     # geom_point() tells the plot that we want dots not lines.
     labs(title = 'Intensity difference vs M/Z')+
     xlab('M/Z')+ ylab('Intensity Diference')
@@ -294,7 +312,7 @@ MS_FBA <- function(xcms_tsvfile,files,file_prefixes,compounds_tsv,ion_mode,pvalu
   listofmatches <- c()
   for (i in 1:nrow(potential_matches)){
     matches <- potential_matches[i,7]
-    listofmatches <- c(listofmatches,ranked_macthes_df(potential_matches[i,7])[,1])
+    listofmatches <- c(listofmatches,ranked_matches_df(potential_matches[i,7])[,1])
   }
   listofmatches <- unique(listofmatches)
   return(list('matching_dataframes' = matching_df, "listofmatches" = listofmatches,'totalplot' = list('potential_matches' = potential_matches, 'M_plus_one' = mplus1,'M_plus_two' = mplus2, 'no_match' = no_matches), '2D_graph' = gg, '3D_graph' = pp,'matches_2D_graph' = gg1,'matches_3D_graph' = pp1, 'no_match_2D_graph' = gg2,'no_match_3D_graph' = pp2))
